@@ -1,12 +1,136 @@
 # Naive Bayes Spam Classifier
 
-**Author:** Marcus Rafael B. Tiongson  
+A spam classifier that categorizes emails as **spam** or **ham** (not spam), trained and evaluated on the **TREC06 Public Spam Corpus**.
+
+---
+
+## Requirements
+
+```
+python >= 3.8
+matplotlib
+pandas
+tabulate
+```
+
+```bash
+pip install matplotlib pandas tabulate
+```
+
+No other external libraries are required beyond the Python standard library (`email`, `re`, `unicodedata`, `math`, `csv`, `collections`, `os`, `copy`).
+
+---
+
+## File Structure
+
+```
+naivebayes/
+├── main.py            # Entry point — runs the full pipeline
+├── config.py          # Dataset source path
+├── dataset.py         # Label loading, TrainingSplit, test.csv persistence
+├── preprocessing.py   # parse() and clean() email functions
+├── vocabulary.py      # VocabularyExtractor, save_vocabs(), load_vocabs()
+├── classifier.py      # priors(), denom(), classify(), Scores, topwords()
+├── evaluate.py        # Lambda sweep, topwords sweep, tablegraph(), plotgraph()
+└── storage.py         # save_model(), save_results()
+```
+
+---
+
+## Usage
+
+### 1. Set the dataset path
+
+Open `config.py` and set `source` to the path of your local TREC06 corpus:
+
+```python
+source = 'trec06p-ai201'
+```
+
+If the dataset is in the same directory as the scripts, the default value works as-is.
+
+### 2. Run the full pipeline
+
+```bash
+python main.py
+```
+
+This runs all steps in order — loading the dataset, building the vocabulary, sweeping lambda values, running the topwords improvement, and saving all outputs.
+
+### 3. Outputs
+
+After a successful run, four files will be written to the working directory:
+
+| File | Contents |
+|------|----------|
+| `test.csv` | The 70/30 folder split (cached so reruns use the same split) |
+| `vocabs.csv` | Ham and spam word frequency tables |
+| `model.csv` | Full trained model: word counts, vocabulary flags, and metadata |
+| `results.csv` | Evaluation metrics across all lambda and top-n configurations |
+
+### 4. Reuse individual modules
+
+Each module can be imported independently for reuse in other scripts.
+
+**Classify a single raw email string:**
+
+```python
+from vocabulary import VocabularyExtractor, load_vocabs
+from classifier import denom, classify
+from config import source
+
+vocabs = VocabularyExtractor(source, trainingset=None)
+load_vocabs(vocabs)  # load from vocabs.csv
+
+LAMBDA_VAL = 0.005
+dham, dspam = denom(vocabs, LAMBDA_VAL)
+
+label, pspam, pham, _ = classify(raw_email_text, vocabs, LAMBDA_VAL, dham, dspam)
+print(label)  # 'spam' or 'ham'
+```
+
+**Rebuild vocabulary from scratch (skips cache):**
+
+```python
+from dataset import load_labels, load_or_create_split
+from vocabulary import VocabularyExtractor, save_vocabs
+from config import source
+import dataset
+
+dataset.load_labels()
+tests = sorted(dataset.tests)
+trec06 = load_or_create_split(tests)
+
+vocabs = VocabularyExtractor(source, trec06)
+vocabs.build_vocabs(trec06)
+save_vocabs(vocabs)
+```
+
+**Run evaluation with custom lambda values:**
+
+```python
+from evaluate import run_lambda_sweep, tablegraph, plotgraph
+
+results = run_lambda_sweep(vocabs, LAMBDA_VALUES=[0, 0.1, 0.005])
+df = tablegraph(results)
+plotgraph(df)
+```
+
+**Apply topwords filtering before classifying:**
+
+```python
+from classifier import topwords, denom, classify
+
+filtered_vocabs, removed = topwords(100, vocabs)
+dham, dspam = denom(filtered_vocabs, 0.005)
+label, pspam, pham, _ = classify(raw_email_text, filtered_vocabs, 0.005, dham, dspam)
+```
 
 ---
 
 ## Overview
 
-This notebook implements a **Naive Bayes classifier** that categorizes emails as **spam** or **ham** (not spam). The model is trained and evaluated on a subset of the **TREC06 Public Spam Corpus**, a standard benchmark for email spam filtering research.
+This project implements a **Naive Bayes classifier** that categorizes emails as **spam** or **ham** (not spam). The model is trained and evaluated on a subset of the **TREC06 Public Spam Corpus**, a standard benchmark for email spam filtering research.
 
 ---
 
@@ -32,12 +156,6 @@ The `labels` file maps each email to a class using the format:
 ```
 ham ../data/000/000
 spam ../data/000/001
-```
-
-Set the `source` variable in the notebook to your local path before running:
-
-```python
-source = 'trec06p-ai201'
 ```
 
 ---
@@ -136,22 +254,3 @@ The `parse()` and `clean()` functions handle the following:
 The best Precision-Recall balance is achieved at **λ = 0.005** with **top-n = 100** (removing the 100 most frequent non-discriminative words such as stopwords, HTML tags, SMTP headers, and single letters). Higher Precision is preferred to minimize legitimate emails being marked as spam (false positives).
 
 Disabling smoothing (λ = 0) results in perfect Precision but very poor Recall (F1 = 0.1692), as the classifier defaults conservatively to `ham` for any unseen word.
-
----
-
-## Requirements
-
-```
-python >= 3.8
-matplotlib
-pandas
-tabulate
-```
-
-Install dependencies:
-
-```bash
-pip install matplotlib pandas tabulate
-```
-
-No other external libraries are required beyond the Python standard library (`email`, `re`, `unicodedata`, `math`, `csv`, `collections`, `os`, `copy`).
